@@ -11,7 +11,6 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ================= SÉCURITÉ : CODE PIN ADMIN =================
-// Par défaut: 123456. Modifiable au lancement (ex: ADMIN_PIN=987654 node server.js)
 const ADMIN_PIN = process.env.ADMIN_PIN || "123456";
 console.log(`[SÉCURITÉ] Code PIN Admin actif : ${ADMIN_PIN}`);
 
@@ -20,50 +19,83 @@ const db = new sqlite3.Database('./restaurant.db', (err) => {
     if (err) console.error("Erreur BDD :", err.message);
 });
 
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS restaurant_tables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            number TEXT UNIQUE NOT NULL,
-            capacity INTEGER NOT NULL,
-            status TEXT DEFAULT 'libre'
-        )
-    `);
-    db.run(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`);
-
-    db.get("SELECT COUNT(*) as count FROM restaurant_tables", [], (err, row) => {
-        if (row && row.count === 0) {
-            const stmt = db.prepare("INSERT INTO restaurant_tables (number, capacity, status) VALUES (?, ?, ?)");
-            stmt.run("101", 2, "libre");
-            stmt.run("102", 4, "occupee");
-            stmt.finalize();
-        }
+// Promisification manuelle des méthodes SQLite pour utiliser async/await
+const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+        if (err) reject(err);
+        else resolve(this);
     });
-    db.run("INSERT OR IGNORE INTO config (key, value) VALUES ('viewMode', 'grid')");
 });
 
-function broadcastUpdate() {
-    db.all("SELECT * FROM restaurant_tables", [], (err, tables) => {
-        if (err) return console.error(err.message);
-        db.get("SELECT value FROM config WHERE key = 'viewMode'", [], (err, configRow) => {
-            const viewMode = configRow ? configRow.value : 'grid';
-            io.emit('updateTables', tables);
-            io.emit('updateViewMode', viewMode);
-        });
+const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
     });
+});
+
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+    });
+});
+
+// Initialisation asynchrone de la base de données
+async function initDB() {
+    try {
+        await dbRun(`
+            CREATE TABLE IF NOT EXISTS restaurant_tables (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number TEXT UNIQUE NOT NULL,
+                capacity INTEGER NOT NULL,
+                status TEXT DEFAULT 'libre'
+            )
+        `);
+        await dbRun(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`);
+
+        const row = await dbGet("SELECT COUNT(*) as count FROM restaurant_tables");
+        if (row && row.count === 0) {
+            await dbRun("INSERT INTO restaurant_tables (number, capacity, status) VALUES (?, ?, ?)", ["101", 2, "libre"]);
+            await dbRun("INSERT INTO restaurant_tables (number, capacity, status) VALUES (?, ?, ?)", ["102", 4, "occupee"]);
+        }
+
+        await dbRun("INSERT OR IGNORE INTO config (key, value) VALUES ('viewMode', 'grid')");
+    } catch (err) {
+        console.error("Erreur lors de l'initialisation de la BDD:", err);
+    }
+}
+
+// Lancement de l'initialisation
+initDB();
+
+// Fonction de diffusion asynchrone
+async function broadcastUpdate() {
+    try {
+        const tables = await dbAll("SELECT * FROM restaurant_tables");
+        const configRow = await dbGet("SELECT value FROM config WHERE key = 'viewMode'");
+        const viewMode = configRow ? configRow.value : 'grid';
+
+        io.emit('updateTables', tables);
+        io.emit('updateViewMode', viewMode);
+    } catch (err) {
+        console.error("Erreur lors du broadcast :", err.message);
+    }
 }
 
 // ================= COMMUNICATIONS TEMPS RÉEL =================
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
 
     // Envoi initial des données
-    db.all("SELECT * FROM restaurant_tables", [], (err, tables) => {
-        db.get("SELECT value FROM config WHERE key = 'viewMode'", [], (err, configRow) => {
-            socket.emit('initData', { tables, viewMode: configRow ? configRow.value : 'grid' });
-        });
-    });
+    try {
+        const tables = await dbAll("SELECT * FROM restaurant_tables");
+        const configRow = await dbGet("SELECT value FROM config WHERE key = 'viewMode'");
+        socket.emit('initData', { tables, viewMode: configRow ? configRow.value : 'grid' });
+    } catch (err) {
+        console.error("Erreur d'envoi initial :", err.message);
+    }
 
-    // VERIFICATION DU CODE PIN (Demande d'initialisation de l'écran admin)
+    // VERIFICATION DU CODE PIN
     socket.on('verifyAdminPin', (pin, callback) => {
         if (pin === ADMIN_PIN) {
             callback({ success: true });
@@ -73,80 +105,91 @@ io.on('connection', (socket) => {
     });
 
     // ACTION SECURISEE : Ajouter une table
-    socket.on('addTable', ({ number, capacity, pin }, callback) => {
+    socket.on('addTable', async ({ number, capacity, pin }, callback) => {
         if (pin !== ADMIN_PIN) {
             return callback ? callback({ success: false, message: "Code PIN requis ou invalide" }) : null;
         }
 
-        const query = `INSERT INTO restaurant_tables (number, capacity, status) VALUES (?, ?, 'libre')`;
-        db.run(query, [number, parseInt(capacity)], function (err) {
-            if (err) {
-                return callback ? callback({ success: false, message: "Ce numéro de table existe déjà." }) : null;
-            }
+        try {
+            await dbRun(`INSERT INTO restaurant_tables (number, capacity, status) VALUES (?, ?, 'libre')`, [number, parseInt(capacity)]);
             if (callback) callback({ success: true });
-            broadcastUpdate();
-        });
+            await broadcastUpdate();
+        } catch (err) {
+            if (callback) callback({ success: false, message: "Ce numéro de table existe déjà." });
+        }
     });
 
     // ACTION SECURISEE : Supprimer une table
-    socket.on('deleteTable', ({ tableId, pin }, callback) => {
+    socket.on('deleteTable', async ({ tableId, pin }, callback) => {
         if (pin !== ADMIN_PIN) {
             return callback ? callback({ success: false, message: "Action non autorisée" }) : null;
         }
 
-        db.run("DELETE FROM restaurant_tables WHERE id = ?", [tableId], function (err) {
-            if (err) {
-                return callback ? callback({ success: false, message: "Erreur lors de la suppression" }) : null;
-            }
+        try {
+            await dbRun("DELETE FROM restaurant_tables WHERE id = ?", [tableId]);
             if (callback) callback({ success: true });
-            broadcastUpdate();
-        });
+            await broadcastUpdate();
+        } catch (err) {
+            if (callback) callback({ success: false, message: "Erreur lors de la suppression" });
+        }
     });
 
     // ACTION SECURISEE : Modifier une table
-    socket.on('editTable', ({ tableId, number, capacity, pin }, callback) => {
+    socket.on('editTable', async ({ tableId, number, capacity, pin }, callback) => {
         if (pin !== ADMIN_PIN) {
             return callback ? callback({ success: false, message: "Action non autorisée" }) : null;
         }
 
-        const query = `UPDATE restaurant_tables SET number = ?, capacity = ? WHERE id = ?`;
-        db.run(query, [number, parseInt(capacity), tableId], function (err) {
-            if (err) {
-                return callback ? callback({ success: false, message: "Ce numéro de table est déjà utilisé." }) : null;
-            }
+        try {
+            await dbRun(`UPDATE restaurant_tables SET number = ?, capacity = ? WHERE id = ?`, [number, parseInt(capacity), tableId]);
             if (callback) callback({ success: true });
-            broadcastUpdate();
-        });
+            await broadcastUpdate();
+        } catch (err) {
+            if (callback) callback({ success: false, message: "Ce numéro de table est déjà utilisé." });
+        }
     });
 
     // Action Admin : Changer le mode d'affichage
-    socket.on('changeViewMode', (mode) => {
-        db.run("UPDATE config SET value = ? WHERE key = 'viewMode'", [mode], () => {
+    socket.on('changeViewMode', async (mode) => {
+        try {
+            await dbRun("UPDATE config SET value = ? WHERE key = 'viewMode'", [mode]);
             io.emit('updateViewMode', mode);
-        });
+        } catch (err) {
+            console.error(err.message);
+        }
     });
 
-    // Action Accueil / Service (Reste inchangé)
-    socket.on('occupyTable', (tableId) => {
-        db.run("UPDATE restaurant_tables SET status = 'occupee' WHERE id = ?", [tableId], () => broadcastUpdate());
+    // Action Accueil / Service
+    socket.on('occupyTable', async (tableId) => {
+        try {
+            await dbRun("UPDATE restaurant_tables SET status = 'occupee' WHERE id = ?", [tableId]);
+            await broadcastUpdate();
+        } catch (err) {
+            console.error(err.message);
+        }
     });
 
     // Action Caisse : La table a payé, elle attend d'être nettoyée
-    socket.on('cleanTable', (tableId) => {
-        db.run("UPDATE restaurant_tables SET status = 'a_nettoyer' WHERE id = ?", [tableId], () => broadcastUpdate());
+    socket.on('cleanTable', async (tableId) => {
+        try {
+            await dbRun("UPDATE restaurant_tables SET status = 'a_nettoyer' WHERE id = ?", [tableId]);
+            await broadcastUpdate();
+        } catch (err) {
+            console.error(err.message);
+        }
     });
 
-    socket.on('freeTable', (tableId) => {
-        db.run("UPDATE restaurant_tables SET status = 'libre' WHERE id = ?", [tableId], () => broadcastUpdate());
+    socket.on('freeTable', async (tableId) => {
+        try {
+            await dbRun("UPDATE restaurant_tables SET status = 'libre' WHERE id = ?", [tableId]);
+            await broadcastUpdate();
+        } catch (err) {
+            console.error(err.message);
+        }
     });
 });
 
-// const PORT = 3000;
-// server.listen(PORT, '0.0.0.0', () => {
-//     console.log(`Serveur sécurisé actif sur le port ${PORT}`);
-// });
-
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Serveur en ligne en production sur le port ${PORT}`);
+    console.log(`Serveur asynchrone en ligne sur le port ${PORT}`);
 });

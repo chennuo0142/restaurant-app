@@ -194,15 +194,21 @@
         }
 
         // --- RENDU ET LOGIQUE MÉTIER ---
+        // --- RENDU ET LOGIQUE MÉTIER ---
         function render() {
             const container = document.getElementById('tables-container');
             container.innerHTML = '';
             container.className = localViewMode === 'grid' ? 'grid-mode' : 'list-mode';
 
-            // 1. TRI PAR ORDRE CROISSANT
-            // On trie les tables selon leur numéro. 
-            // localeCompare(..., numeric: true) permet de trier intelligemment (ex: "2" avant "10")
+            // 1. TRI DYNAMIQUE (Par couverts si recherche active, sinon par numéro)
             const sortedTables = [...localTables].sort((a, b) => {
+                if (minCapacitySearch > 0) {
+                    // Tri principal par nombre de couverts (croissant)
+                    if (a.capacity !== b.capacity) {
+                        return a.capacity - b.capacity;
+                    }
+                }
+                // Tri par numéro de table (par défaut ou en cas d'égalité de couverts)
                 return a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' });
             });
 
