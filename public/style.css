@@ -1,0 +1,384 @@
+:root {
+    --bg-color: #f4f6f9;
+    --card-bg: #ffffff;
+    --primary: #3498db;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --text: #2c3e50;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text);
+    margin: 0;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.btn {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: var(--primary);
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.btn-success {
+    background-color: var(--success);
+}
+
+.hidden {
+    display: none !important;
+}
+
+.card {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    margin-bottom: 20px;
+}
+
+form input {
+    padding: 10px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+/* ================= MODES D'AFFICHAGE ================= */
+
+/* Mode Rectangle (Grille) */
+.grid-mode {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+}
+
+.grid-mode .table-card {
+    background: var(--card-bg);
+    padding: 30px 20px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    border: 3px solid transparent;
+    transition: transform 0.2s;
+}
+
+.grid-mode .table-num {
+    font-size: 1.4rem;
+    font-weight: bold;
+}
+
+.grid-mode .table-cap {
+    color: #7f8c8d;
+    margin: 10px 0;
+}
+
+.grid-mode .table-status-text {
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+/* Mode Liste */
+.list-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.list-mode .table-card {
+    background: var(--card-bg);
+    padding: 15px 20px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.badge {
+    padding: 5px 10px;
+    border-radius: 20px;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+/* ================= ETATS ET DYNAMISME ================= */
+.libre {
+    border-color: var(--success) !important;
+    background-color: #e8f8f0 !important;
+}
+
+.badge.libre {
+    background-color: var(--success);
+}
+
+.occupee {
+    border-color: var(--danger) !important;
+    background-color: #fdedec !important;
+}
+
+.badge.occupee {
+    background-color: var(--danger);
+}
+
+.clickable {
+    cursor: pointer;
+}
+
+.clickable:hover {
+    transform: scale(1.03);
+}
+
+/* Bouton d'accès admin */
+.btn-warn {
+    background-color: #e67e22;
+}
+
+/* Organisation panneau admin */
+.admin-panels {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.admin-panels .card {
+    flex: 1;
+    min-width: 250px;
+}
+
+/* Bouton de suppression en mode Rectangle (Grille) */
+.grid-mode .table-card {
+    position: relative;
+    /* Nécessaire pour positionner le bouton de suppression */
+}
+
+.delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.delete-btn:hover {
+    background-color: #c0392b;
+    transform: scale(1.1);
+}
+
+/* Bouton de suppression en mode Liste */
+.list-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.delete-btn-list {
+    background: var(--danger);
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.delete-btn-list:hover {
+    background-color: #c0392b;
+}
+
+.text-status {
+    font-style: italic;
+    color: #7f8c8d;
+}
+
+/* Style du bloc de recherche */
+.search-container h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    color: var(--primary);
+}
+
+.search-form {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.search-form label {
+    font-weight: 500;
+}
+
+.search-form input[type="number"] {
+    width: 80px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    text-align: center;
+}
+
+/* Notification aucun résultat */
+.no-result {
+    padding: 20px;
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+    border-radius: 6px;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* Bouton modifier en mode Rectangle (Grille) */
+.edit-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.edit-btn:hover {
+    background-color: #2980b9;
+    transform: scale(1.1);
+}
+
+/* Bouton modifier en mode Liste */
+.edit-btn-list {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.edit-btn-list:hover {
+    background-color: #2980b9;
+}
+
+/* Couleur du bouton Caisse dans le header */
+.btn-caisse {
+    background-color: #9b59b6;
+    /* Violet */
+}
+
+.btn-caisse:hover {
+    background-color: #8e44ad;
+}
+
+/* ================= ÉTAT : À NETTOYER (ORANGE CLIGNOTANT) ================= */
+.a_nettoyer {
+    border-color: #e67e22 !important;
+    background-color: #fdebd0 !important;
+    animation: blink-orange 1.5s infinite ease-in-out;
+}
+
+.badge.a_nettoyer {
+    background-color: #e67e22;
+    animation: blink-orange 1.5s infinite ease-in-out;
+}
+
+/* Définition de l'animation de clignotement */
+@keyframes blink-orange {
+    0% {
+        opacity: 1;
+        box-shadow: 0 4px 10px rgba(230, 126, 34, 0.2);
+    }
+
+    50% {
+        opacity: 0.6;
+        box-shadow: 0 4px 20px rgba(230, 126, 34, 0.6);
+    }
+
+    100% {
+        opacity: 1;
+        box-shadow: 0 4px 10px rgba(230, 126, 34, 0.2);
+    }
+}
+
+@media screen and (max-width: 700px) {
+    header {
+        display: block;
+    }
+
+
+}
+
+@media screen and (max-width: 390px) {
+    header {
+        display: block;
+    }
+
+    .grid-mode {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+    }
+
+    .grid-mode .table-card {
+        background: var(--card-bg);
+        padding: 30px 20px;
+        border-radius: 12px;
+        text-align: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        border: 3px solid transparent;
+        transition: transform 0.2s;
+    }
+
+    .btn {
+        padding: 5px 7px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        background-color: var(--primary);
+        color: white;
+        text-decoration: none;
+        font-weight: bold;
+        margin-right: 5px;
+    }
+
+
+
+}

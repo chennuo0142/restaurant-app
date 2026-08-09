@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Tables</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+
+    <header>
+        <h1 id="app-title">Cosmos</h1>
+        <div id="role-selector">
+            <button class="btn btn-warn" onclick="requestAdminAccess()">Admin</button>
+            <a href="?role=accueil" class="btn">Accueil</a>
+            <a href="?role=caisse" class="btn btn-caisse">Caisse</a>
+            <a href="?role=service" class="btn">Service</a>
+        </div>
+    </header>
+
+    <main>
+        <!-- ================= ZONE ADMIN (VERROUILLEE PAR PIN) ================= -->
+        <section id="section-admin" class="role-section hidden">
+            <h2>Espace Administration</h2>
+            <div class="admin-panels">
+                <div class="card">
+                    <h3>Ajouter une table</h3>
+                    <form id="form-add-table">
+                        <input type="text" id="table-number" placeholder="N° de table" required>
+                        <input type="number" id="table-capacity" placeholder="Couverts" required min="1">
+                        <button type="submit" class="btn btn-success">Ajouter</button>
+                    </form>
+                </div>
+                <div class="card">
+                    <h3>Mode de présentation</h3>
+                    <button class="btn" onclick="setViewMode('grid')">Rectangle</button>
+                    <button class="btn" onclick="setViewMode('list')">Liste</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= BARRE DE RECHERCHE & FILTRES ================= -->
+        <section id="section-search" class="card">
+            <div class="search-container">
+                <h3>🔍 Trouver une table libre</h3>
+                <div class="search-form">
+                    <label for="search-capacity">Nombre de couverts minimum :</label>
+                    <input type="number" id="search-capacity" min="0" placeholder="Ex: 4"
+                        oninput="handleSearchChange()">
+                    <button class="btn" onclick="resetSearch()">Réinitialiser</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= AFFICHAGE DES TABLES ================= -->
+        <section id="section-display">
+            <h2 id="view-title">État des Tables</h2>
+            <div id="tables-container" class="grid-mode"></div>
+        </section>
+    </main>
+
+    <script>
+        const socket = io();
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentRole = urlParams.get('role') || 'accueil';
+
+        let localTables = [];
+        let localViewMode = 'grid';
+        let sessionAdminPin = null;
+
+        // Critère de recherche local
+        let minCapacitySearch = 0;
+
+        if (currentRole === 'admin') {
+            currentRole = 'accueil';
+            requestAdminAccess();
+        } else {
+            updateUIForRole();
+        }
+
+        function updateUIForRole() {
+            document.getElementById('app-title').innerText = `Cosmos ${currentRole.toUpperCase()}`;
+            if (currentRole === 'admin') {
+                document.getElementById('section-admin').classList.remove('hidden');
+            } else {
+                document.getElementById('section-admin').classList.add('hidden');
+            }
+        }
+
+        // --- SÉCURITÉ ADMIN ---
+        function requestAdminAccess() {
+            const pin = prompt("Entrez le code PIN Admin à 6 chiffres pour l'initialisation :");
+            if (!pin) return;
+
+            socket.emit('verifyAdminPin', pin, (response) => {
+                if (response.success) {
+                    sessionAdminPin = pin;
+                    currentRole = 'admin';
+                    updateUIForRole();
+                    render();
+                } else {
+                    alert(response.message);
+                }
+            });
+        }
+
+        // --- COMMUNICATIONS SOCKET.IO ---
+        socket.on('initData', (data) => {
+            localTables = data.tables;
+            localViewMode = data.viewMode;
+            render();
+        });
+
+        socket.on('updateTables', (tables) => {
+            localTables = tables;
+            render();
+        });
+
+        socket.on('updateViewMode', (mode) => {
+            localViewMode = mode;
+            render();
+        });
+
+        // --- LOGIQUE DE RECHERCHE ---
+        function handleSearchChange() {
+            const inputVal = document.getElementById('search-capacity').value;
+            minCapacitySearch = inputVal ? parseInt(inputVal) : 0;
+            render(); // Déclenche un rafraîchissement immédiat de l'affichage
+        }
+
+        function resetSearch() {
+            document.getElementById('search-capacity').value = '';
+            minCapacitySearch = 0;
+            render();
+        }
+
+        // --- ACTIONS TABLES ---
+        document.getElementById('form-add-table').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const number = document.getElementById('table-number').value;
+            const capacity = document.getElementById('table-capacity').value;
+
+            socket.emit('addTable', { number, capacity, pin: sessionAdminPin }, (res) => {
+                if (res && !res.success) alert(res.message);
+                else e.target.reset();
+            });
+        });
+
+        function deleteTable(tableId, tableNumber) {
+            if (confirm(`Supprimer la Table ${tableNumber} ?`)) {
+                socket.emit('deleteTable', { tableId, pin: sessionAdminPin }, (res) => {
+                    if (res && !res.success) alert(res.message);
+                });
+            }
+        }
+        function editTable(tableId, currentNumber, currentCapacity) {
+            const newNumber = prompt(`Modifier le numéro de la table :`, currentNumber);
+            if (!newNumber) return; // Annulation
+
+            const newCapacity = prompt(`Modifier le nombre de couverts :`, currentCapacity);
+            if (!newCapacity) return; // Annulation
+
+            socket.emit('editTable', {
+                tableId,
+                number: newNumber,
+                capacity: parseInt(newCapacity),
+                pin: sessionAdminPin
+            }, (res) => {
+                if (res && !res.success) {
+                    alert(res.message);
+                }
+            });
+        }
+
+        function setViewMode(mode) {
+            socket.emit('changeViewMode', mode);
+        }
+
+        function handleTableClick(id, currentStatus) {
+            if (currentRole === 'accueil' && currentStatus === 'libre') {
+                socket.emit('occupyTable', id);
+            }
+            // Caisse : Encaisse une table occupée -> passe à nettoyer
+            else if (currentRole === 'caisse' && currentStatus === 'occupee') {
+                socket.emit('cleanTable', id);
+            }
+            // Service : Libère et valide le nettoyage d'une table orange
+            else if (currentRole === 'service' && (currentStatus === 'a_nettoyer' || currentStatus === 'occupee')) {
+                socket.emit('freeTable', id);
+            }
+        }
+
+        // --- RENDU ET LOGIQUE MÉTIER ---
+        function render() {
+            const container = document.getElementById('tables-container');
+            container.innerHTML = '';
+            container.className = localViewMode === 'grid' ? 'grid-mode' : 'list-mode';
+
+            // 1. TRI PAR ORDRE CROISSANT
+            // On trie les tables selon leur numéro. 
+            // localeCompare(..., numeric: true) permet de trier intelligemment (ex: "2" avant "10")
+            const sortedTables = [...localTables].sort((a, b) => {
+                return a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+            // 2. FILTRAGE ET RECHERCHE DYNAMIQUE
+            sortedTables.forEach(table => {
+
+                // Règle Accueil : cacher les tables occupées
+                if (currentRole === 'accueil' && table.status !== 'libre') return;
+
+                // Fonction de Recherche : Si un nombre de couverts est spécifié, 
+                // on n'affiche la table que si elle est LIBRE et que sa capacité est suffisante.
+                if (minCapacitySearch > 0) {
+                    if (table.status !== 'libre' || table.capacity < minCapacitySearch) {
+                        return; // Ignore cette table
+                    }
+                }
+
+                const div = document.createElement('div');
+                div.className = `table-card ${table.status}`;
+
+                if ((currentRole === 'accueil' && table.status === 'libre') ||
+                    (currentRole === 'caisse' && table.status === 'occupee') ||
+                    (currentRole === 'service' && table.status === 'a_nettoyer')) {
+                    div.classList.add('clickable');
+                }
+
+                if (currentRole !== 'admin') {
+                    div.onclick = () => handleTableClick(table.id, table.status);
+                }
+
+                if (localViewMode === 'grid') {
+                    div.innerHTML = `
+                        ${currentRole === 'admin' ? `
+                            <button class="delete-btn" onclick="deleteTable(${table.id}, '${table.number}')">✕</button>
+                            <button class="edit-btn" onclick="editTable(${table.id}, '${table.number}', ${table.capacity})">✏️</button>
+                        ` : ''}
+                        <div class="table-num">Table ${table.number}</div>
+                        <div class="table-cap">${table.capacity} Couverts</div>
+                        <div class="table-status-text">${table.status.toUpperCase()}</div>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <span><strong>Table ${table.number}</strong> (${table.capacity} pers.) - <span class="text-status">${table.status}</span></span>
+                        <div class="list-actions">
+                            ${currentRole === 'admin' ? `
+                                <button class="edit-btn-list" onclick="editTable(${table.id}, '${table.number}', ${table.capacity})">Modifier</button>
+                                <button class="delete-btn-list" onclick="deleteTable(${table.id}, '${table.number}')">Supprimer</button>
+                            ` : ''}
+                            <span class="badge ${table.status}">${table.status.toUpperCase()}</span>
+                        </div>
+                    `;
+                }
+                container.appendChild(div);
+            });
+
+            // Message si aucun résultat trouvé lors d'une recherche
+            if (container.children.length === 0 && minCapacitySearch > 0) {
+                container.className = "";
+                container.innerHTML = `<div class="no-result">⚠️ Aucune table libre ne correspond à une capacité de ${minCapacitySearch} couverts ou plus.</div>`;
+            }
+        }
+    </script>
+</body>
+
+</html>

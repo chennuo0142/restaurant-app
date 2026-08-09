@@ -1,0 +1,2 @@
+#!/bin/sh
+rsync -av ./ jb7fp_chennuo0142@57-115184.ssh.hosting-ik.com:~/sites/table.cosmos16.fr --include="*"
